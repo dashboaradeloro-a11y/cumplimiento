@@ -26,7 +26,7 @@ st.markdown("Monitoreo institucional automatizado conectado en tiempo real con t
 
 # 2. CONEXIÓN EN DIRECTO CON ONEDRIVE
 # Convertimos tu enlace compartido en un enlace de descarga directa para Python
-URL_COMPARTIDA = "https://1drv.ms/x/c/c16d224ec509db16/IQBmdL8Yo16yTorHBVOsBuNXAZXQNJejA86OCrqf9Eme1d4?e=acsxYp"
+URL_COMPARTIDA = "https://1drv.ms/x/c/c16d224ec509db16/IQBmdL8Yo16yTorHBVOsBuNXAZXQNJejA86OCrqf9Eme1d4"
 
 @st.cache_data(ttl=300)  # Almacena en caché por 5 minutos para que la app cargue rápido
 def cargar_datos_desde_onedrive(url):
