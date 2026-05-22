@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. CONFIGURACIÓN DE LA PÁGINA
+# 1. Configuración de la interfaz del Dashboard
 st.set_page_config(
     page_title="Dashboard de Atenciones Médicas - MSP",
     page_icon="📊",
@@ -10,166 +10,99 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS avanzados para un entorno institucional y limpio
+# Estilos visuales personalizados (Limpios y profesionales)
 st.markdown("""
     <style>
-    .main { background-color: #f8fafc; }
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 5px solid #0284c7; }
-    h1 { color: #1e3a8a; font-family: 'Segoe UI', sans-serif; font-weight: 700; }
-    h2, h3 { color: #0f766e; font-family: 'Segoe UI', sans-serif; }
-    div.stButton > button:first-child { background-color: #0284c7; color: white; }
+        .main { background-color: #f8f9fa; }
+        .metric-box {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-left: 5px solid #1f77b4;
+            margin-bottom: 20px;
+        }
+        h1, h2, h3 { color: #2c3e50; font-family: 'Segoe UI', sans-serif; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏥 Control y Productividad de Atenciones Médicas (OneDrive Direct)")
-st.markdown("Monitoreo institucional automatizado conectado en tiempo real con tu matriz de Excel en línea.")
+st.title("📊 Dashboard de Control y Análisis de Atenciones")
+st.markdown("Sube tu archivo consolidado de Excel para filtrar, cruzar variables y analizar métricas clave en tiempo real.")
 
-# 2. ENLACE DE DESCARGA DIRECTA DE ONEDRIVE
-# IMPORTANTE: Reemplaza esta URL con el enlace que obtuviste en el Paso 1 (Cambiando 'embed' por 'download')
-URL_DESCARGA_DIRECTA = "https://1drv.ms/x/c/c16d224ec509db16/IQBmdL8Yo16yTorHBVOsBuNXAZXQNJejA86OCrqf9Eme1d4?e=qlrh5L"
+# 2. Componente de carga del archivo Excel
+uploaded_file = st.sidebar.file_uploader("📂 Cargar archivo Excel (.xlsx)", type=["xlsx"])
 
-@st.cache_data(ttl=300)  # Almacena los datos en caché por 5 minutos
-def cargar_datos_desde_onedrive(url):
+if uploaded_file is not None:
     try:
-        # Al usar 'download' en la URL, pandas puede leer el archivo .xlsx directamente como un archivo local
-        df = pd.read_excel(url)
-        return df
+        # Lectura de datos y remoción de espacios fantasmas en las columnas
+        df = pd.read_excel(uploaded_file)
+        df.columns = df.columns.str.strip()
+        
+        # Validación y conversión de fechas
+        if 'FECHA ATENCION' in df.columns:
+            df['FECHA ATENCION'] = pd.to_datetime(df['FECHA ATENCION'], errors='coerce')
+        else:
+            st.error("❌ No se encontró la columna 'FECHA ATENCION' en el archivo.")
+            st.stop()
+
+        # 3. FILTROS DINÁMICOS EN LA BARRA LATERAL
+        st.sidebar.header("🔍 Filtros de Búsqueda")
+        
+        selected_centros = st.sidebar.multiselect("Nombre del Centro de Salud", sorted(df['NOMBRE DE CENTRO DE SALUD'].dropna().unique()))
+        selected_tipos = st.sidebar.multiselect("Tipo de Centro de Salud", sorted(df['TIPO DE CENTRO DE SAL'].dropna().unique()))
+        selected_cantones = st.sidebar.multiselect("Cantón", sorted(df['CANTON'].dropna().unique()))
+        selected_entidades = st.sidebar.multiselect("Entidad (Distrito)", sorted(df['ENTIDAD'].dropna().unique()))
+        selected_profesionales = st.sidebar.multiselect("Profesional", sorted(df['PROFESIONAL'].dropna().unique()))
+        selected_atenciones = st.sidebar.multiselect("Código de Atención (CIE-10)", sorted(df['ATENCION'].dropna().unique()))
+        
+        # Filtro de Rango de Fechas
+        min_date = df['FECHA ATENCION'].min().date() if not df['FECHA ATENCION'].isnull().all() else pd.Timestamp.today().date()
+        max_date = df['FECHA ATENCION'].max().date() if not df['FECHA ATENCION'].isnull().all() else pd.Timestamp.today().date()
+        date_range = st.sidebar.date_input("Rango de Fechas de Atención", [min_date, max_date])
+
+        # 4. APLICACIÓN DE FILTROS EN CADENA
+        df_filtered = df.copy()
+        if selected_centros: df_filtered = df_filtered[df_filtered['NOMBRE DE CENTRO DE SALUD'].isin(selected_centros)]
+        if selected_tipos: df_filtered = df_filtered[df_filtered['TIPO DE CENTRO DE SAL'].isin(selected_tipos)]
+        if selected_cantones: df_filtered = df_filtered[df_filtered['CANTON'].isin(selected_cantones)]
+        if selected_entidades: df_filtered = df_filtered[df_filtered['ENTIDAD'].isin(selected_entidades)]
+        if selected_profesionales: df_filtered = df_filtered[df_filtered['PROFESIONAL'].isin(selected_profesionales)]
+        if selected_atenciones: df_filtered = df_filtered[df_filtered['ATENCION'].isin(selected_atenciones)]
+        if len(date_range) == 2:
+            df_filtered = df_filtered[(df_filtered['FECHA ATENCION'].dt.date >= date_range[0]) & (df_filtered['FECHA ATENCION'].dt.date <= date_range[1])]
+
+        # 5. INDICADORES CLAVE (KPIs)
+        total_atenciones = len(df_filtered)
+        top_diag = df_filtered['DIAGNOSTICO'].value_counts().index[0] if 'DIAGNOSTICO' in df_filtered.columns and not df_filtered['DIAGNOSTICO'].empty else "N/A"
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"<div class='metric-box'><small style='color: #7f8c8d; font-weight: bold;'>TOTAL DE ATENCIONES</small><h2 style='margin: 0; color: #2980b9;'>{total_atenciones:,}</h2></div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"<div class='metric-box' style='border-left: 5px solid #27ae60;'><small style='color: #7f8c8d; font-weight: bold;'>DIAGNÓSTICO MÁS FRECUENTE</small><h4 style='margin: 0; color: #27ae60; font-size: 16px;'>{top_diag}</h4></div>", unsafe_allow_html=True)
+
+        # 6. GRÁFICOS COMPARATIVOS DE BARRAS (Plotly)
+        st.subheader("📊 Análisis Comparativo Operativo")
+        g1, g2 = st.columns(2)
+        
+        with g1:
+            if 'TIPO DE ATENCION' in df_filtered.columns:
+                fig_tipo = px.bar(df_filtered['TIPO DE ATENCION'].value_counts().reset_index(), x='TIPO DE ATENCION', y='count', title="Tipo de Atención (Intramural / Extramural)", labels={'count':'Cantidad'}, color='TIPO DE ATENCION', color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_tipo.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_tipo, use_container_width=True)
+
+        with g2:
+            if 'CRONOLOGIA' in df_filtered.columns:
+                fig_crono = px.bar(df_filtered['CRONOLOGIA'].value_counts().reset_index(), x='CRONOLOGIA', y='count', title="Cronología de Atención (Primera / Subsecuente)", labels={'count':'Cantidad'}, color='CRONOLOGIA', color_discrete_sequence=px.colors.qualitative.Safe)
+                fig_crono.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_crono, use_container_width=True)
+
+        # 7. VISUALIZADOR DE REGISTROS FILTRADOS
+        st.subheader("📋 Registros Consolidados")
+        with st.expander("Expandir para auditar la tabla de datos completa"):
+            st.dataframe(df_filtered, use_container_width=True)
+
     except Exception as e:
-        st.error(f"Error crítico al descargar el archivo desde OneDrive: {e}")
-        return None
-
-df_raw = cargar_datos_desde_onedrive(URL_DESCARGA_DIRECTA)
-
-# Mecanismo de contingencia por si falla la red institucional
-if df_raw is None:
-    st.warning("⚠️ No se pudo descargar el archivo automáticamente. Puedes subir una copia manual aquí:")
-    uploaded_file = st.file_uploader("Sube tu archivo Excel (.xlsx):", type=["xlsx"])
-    if uploaded_file is not None:
-        df_raw = pd.read_excel(uploaded_file)
-
-if df_raw is not None:
-    # Limpieza de nombres de columnas
-    df_raw.columns = df_raw.columns.str.strip()
-    
-    # 3. BARRA LATERAL - FILTROS INTERACTIVOS
-    st.sidebar.header("🔍 Filtros de Visualización")
-    
-    # Filtro: Tipo de Centro de Salud
-    if 'TIPO DE CENTRO DE SALUD' in df_raw.columns:
-        tipos_disponibles = ["Todos"] + list(df_raw['TIPO DE CENTRO DE SALUD'].dropna().unique())
-        selected_tipo = st.sidebar.selectbox("Tipo de Centro de Salud", tipos_disponibles)
-    else:
-        selected_tipo = "Todos"
-        
-    df_intermedio = df_raw.copy()
-    if selected_tipo != "Todos":
-        df_intermedio = df_intermedio[df_intermedio['TIPO DE CENTRO DE SALUD'] == selected_tipo]
-        
-    # Filtro: Nombre del Centro de Salud específico
-    if 'NOMBRE DE CENTRO DE SALUD' in df_raw.columns:
-        centros_disponibles = ["Todos"] + list(df_intermedio['NOMBRE DE CENTRO DE SALUD'].dropna().unique())
-        selected_centro = st.sidebar.selectbox("Establecimiento de Salud", centros_disponibles)
-    else:
-        selected_centro = "Todos"
-        
-    # Filtro: Tipo de Atención
-    if 'ATENCION' in df_raw.columns:
-        atencion_disponibles = ["Todos"] + list(df_intermedio['ATENCION'].dropna().unique())
-        selected_atencion = st.sidebar.selectbox("Modalidad de Atención (Intra/Extramural)", atencion_disponibles)
-    else:
-        selected_atencion = "Todos"
-
-    # Aplicación de filtros definitiva
-    df_filtrado = df_raw.copy()
-    if selected_tipo != "Todos":
-        df_filtrado = df_filtrado[df_filtrado['TIPO DE CENTRO DE SALUD'] == selected_tipo]
-    if selected_centro != "Todos":
-        df_filtrado = df_filtrado[df_filtrado['NOMBRE DE CENTRO DE SALUD'] == selected_centro]
-    if selected_atencion != "Todos":
-        df_filtrado = df_filtrado[df_filtrado['ATENCION'] == selected_atencion]
-
-    # 4. TARJETAS DE MÉTRICAS PRINCIPALES (KPIs)
-    total_atenciones = len(df_filtrado)
-    profesionales_unicos = df_filtrado['PROFESIONAL'].nunique() if 'PROFESIONAL' in df_filtrado.columns else 0
-    diagnosticos_unicos = df_filtrado['DIAGNOSTICO'].nunique() if 'DIAGNOSTICO' in df_filtrado.columns else 0
-    
-    kpi1, kpi2, kpi3 = st.columns(3)
-    with kpi1:
-        st.metric(label="Total de Atenciones", value=f"{total_atenciones:,}")
-    with kpi2:
-        st.metric(label="Personal Médico Registrado", value=profesionales_unicos)
-    with kpi3:
-        st.metric(label="Diagnósticos Únicos Registrados", value=diagnosticos_unicos)
-        
-    st.markdown("---")
-
-    # 5. BLOQUES GRÁFICOS DINÁMICOS
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("🏥 Atenciones por Centro de Salud")
-        if 'NOMBRE DE CENTRO DE SALUD' in df_filtrado.columns:
-            data_centro = df_filtrado['NOMBRE DE CENTRO DE SALUD'].value_counts().reset_index()
-            data_centro.columns = ['Centro de Salud', 'Atenciones']
-            fig_centro = px.bar(data_centro, x='Atenciones', y='Centro de Salud', orientation='h',
-                                color='Atenciones', color_continuous_scale='Blues')
-            fig_centro.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=10, r=10, t=20, b=10))
-            st.plotly_chart(fig_centro, use_container_width=True)
-
-    with col2:
-        st.subheader("🏢 Distribución por Tipo de Centro")
-        if 'TIPO DE CENTRO DE SALUD' in df_filtrado.columns:
-            data_tipo = df_filtrado['TIPO DE CENTRO DE SALUD'].value_counts().reset_index()
-            data_tipo.columns = ['Tipo de Centro', 'Atenciones']
-            fig_tipo = px.pie(data_tipo, names='Tipo de Centro', values='Atenciones',
-                              color_discrete_sequence=px.colors.qualitative.Teal)
-            fig_tipo.update_traces(textinfo='percent+value')
-            st.plotly_chart(fig_tipo, use_container_width=True)
-
-    col3, col4 = st.columns(2)
-    with col3:
-        st.subheader("👨‍⚕️ Atenciones por Nombre del Profesional (Top 15)")
-        if 'PROFESIONAL' in df_filtrado.columns:
-            data_prof = df_filtrado['PROFESIONAL'].value_counts().head(15).reset_index()
-            data_prof.columns = ['Profesional', 'Atenciones']
-            fig_prof = px.bar(data_prof, x='Atenciones', y='Profesional', orientation='h',
-                               color='Atenciones', color_continuous_scale='GnBu')
-            fig_prof.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=10, r=10, t=20, b=10))
-            st.plotly_chart(fig_prof, use_container_width=True)
-
-    with col4:
-        st.subheader("📋 Volumen de Casos por Diagnóstico (Top 15)")
-        if 'DIAGNOSTICO' in df_filtrado.columns:
-            data_diag = df_filtrado['DIAGNOSTICO'].value_counts().head(15).reset_index()
-            data_diag.columns = ['Diagnóstico', 'Atenciones']
-            fig_diag = px.bar(data_diag, x='Diagnóstico', y='Atenciones',
-                               color='Atenciones', color_continuous_scale='Purples')
-            st.plotly_chart(fig_diag, use_container_width=True)
-
-    col5, col6 = st.columns(2)
-    with col5:
-        st.subheader("⏳ Análisis por Cronología")
-        if 'CRONOLOGIA' in df_filtrado.columns:
-            data_crono = df_filtrado['CRONOLOGIA'].value_counts().reset_index()
-            data_crono.columns = ['Cronología', 'Atenciones']
-            fig_crono = px.pie(data_crono, names='Cronología', values='Atenciones',
-                                color_discrete_sequence=px.colors.sequential.Magenta)
-            fig_crono.update_traces(textinfo='percent+value')
-            st.plotly_chart(fig_crono, use_container_width=True)
-
-    with col6:
-        st.subheader("📍 Tipo / Modalidad de la Atención")
-        if 'ATENCION' in df_filtrado.columns:
-            data_aten = df_filtrado['ATENCION'].value_counts().reset_index()
-            data_aten.columns = ['Modalidad', 'Atenciones']
-            fig_aten = px.bar(data_aten, x='Modalidad', y='Atenciones',
-                              color='Modalidad', color_discrete_sequence=['#0284c7', '#10b981'])
-            st.plotly_chart(fig_aten, use_container_width=True)
-
-    # 6. TABLA DE REGISTROS
-    st.subheader("🔍 Tabla Desglosada de Registros")
-    st.dataframe(df_filtrado, use_container_width=True)
-    
-    # Botón de refresco manual
-    if st.sidebar.button("🔄 Sincronizar con OneDrive ahora"):
-        st.cache_data.clear()
-        st.rerun()
+        st.error(f"🚨 Error al leer la estructura del archivo: {e}")
+else:
+    st.info("💡 Esperando archivo... Por favor, carga el archivo Excel en la barra lateral izquierda.")
