@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Configuración de la interfaz
+# 1. Configuración de la interfaz del Dashboard
 st.set_page_config(
     page_title="Dashboard de Atenciones Médicas - MSP",
     page_icon="📊",
@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Dashboard de Control y Análisis de Atenciones")
-st.markdown("Sube tu archivo de Excel. Los filtros de la barra lateral se actualizarán automáticamente según tus selecciones.")
+st.markdown("Sube tu archivo de Excel. Los filtros principales operan en una cascada jerárquica estricta.")
 
 # 2. Carga del archivo Excel
 uploaded_file = st.sidebar.file_uploader("📂 Cargar archivo Excel (.xlsx)", type=["xlsx"])
@@ -43,57 +43,59 @@ if uploaded_file is not None:
             st.error("❌ No se encontró la columna requerida: 'FECHA_ATENCION'")
             st.stop()
 
-        # --- 3. LÓGICA DE FILTROS EN CASCADA (DEPENDIENTES) ---
-        st.sidebar.header("🔍 Filtros Dinámicos")
+        # --- 3. LÓGICA DE FILTROS EN CASCADA JERÁRQUICA ---
+        st.sidebar.header("🔍 Jerarquía de Filtros (Cascada)")
 
-        # Filtro 1: Cantón (Base inicial)
-        opciones_canton = sorted(df['CANTON'].dropna().unique()) if 'CANTON' in df.columns else []
-        selected_cantones = st.sidebar.multiselect("1. Cantón", opciones_canton)
+        # PASO 1: Entidad (Distrito) - Muestra todo el universo inicial
+        opciones_entidad = sorted(df['ENTIDAD'].dropna().unique()) if 'ENTIDAD' in df.columns else []
+        selected_entidades = st.sidebar.multiselect("1. Entidad (Distrito)", opciones_entidad)
 
-        # Aplicamos filtro de Cantón para el siguiente paso
-        df_canton = df[df['CANTON'].isin(selected_cantones)] if selected_cantones else df
+        # Aplicamos filtro de Entidad para el siguiente paso
+        df_paso1 = df[df['ENTIDAD'].isin(selected_entidades)] if selected_entidades else df
 
-        # Filtro 2: Entidad / Distrito (Depende del Cantón)
-        opciones_entidad = sorted(df_canton['ENTIDAD'].dropna().unique()) if 'ENTIDAD' in df_canton.columns else []
-        selected_entidades = st.sidebar.multiselect("2. Entidad (Distrito)", opciones_entidad)
+        # PASO 2: Tipo de Centro de Salud (Depende exclusivamente de la Entidad elegida)
+        opciones_tipo = sorted(df_paso1['TIPO_CENTRO_SALUD'].dropna().unique()) if 'TIPO_CENTRO_SALUD' in df_paso1.columns else []
+        selected_tipos = st.sidebar.multiselect("2. Tipo de Centro de Salud", opciones_tipo)
 
-        # Aplicamos filtro de Entidad
-        df_entidad = df_canton[df_canton['ENTIDAD'].isin(selected_entidades)] if selected_entidades else df_canton
+        # Aplicamos filtro de Tipo de Centro para el siguiente paso
+        df_paso2 = df_paso1[df_paso1['TIPO_CENTRO_SALUD'].isin(selected_tipos)] if selected_tipos else df_paso1
 
-        # Filtro 3: Tipo de Centro de Salud (Depende de Entidad/Cantón)
-        opciones_tipo = sorted(df_entidad['TIPO_CENTRO_SALUD'].dropna().unique()) if 'TIPO_CENTRO_SALUD' in df_entidad.columns else []
-        selected_tipos = st.sidebar.multiselect("3. Tipo de Centro de Salud", opciones_tipo)
+        # PASO 3: Establecimiento / Centro de Salud (Depende de Entidad + Tipo de Centro)
+        opciones_centro = sorted(df_paso2['CENTRO_SALUD'].dropna().unique()) if 'CENTRO_SALUD' in df_paso2.columns else []
+        selected_centros = st.sidebar.multiselect("3. Establecimiento (Centro de Salud)", opciones_centro)
 
-        # Aplicamos filtro de Tipo de Centro
-        df_tipo = df_entidad[df_entidad['TIPO_CENTRO_SALUD'].isin(selected_tipos)] if selected_tipos else df_entidad
+        # Aplicamos filtro de Establecimiento para el siguiente paso
+        df_paso3 = df_paso2[df_paso2['CENTRO_SALUD'].isin(selected_centros)] if selected_centros else df_paso2
 
-        # Filtro 4: Centro de Salud (¡Solo saldrán los centros del tipo/cantón seleccionado!)
-        opciones_centro = sorted(df_tipo['CENTRO_SALUD'].dropna().unique()) if 'CENTRO_SALUD' in df_tipo.columns else []
-        selected_centros = st.sidebar.multiselect("4. Centro de Salud / Establecimiento", opciones_centro)
-
-        # Aplicamos filtro de Centro de Salud
-        df_centro = df_tipo[df_tipo['CENTRO_SALUD'].isin(selected_centros)] if selected_centros else df_tipo
-
-        # Filtro 5: Profesional (¡Solo saldrán los médicos que pertenezcan a los centros filtrados!)
-        opciones_profesional = sorted(df_centro['PROFESIONAL'].dropna().unique()) if 'PROFESIONAL' in df_centro.columns else []
-        selected_profesionales = st.sidebar.multiselect("5. Profesional Médico", opciones_profesional)
+        # PASO 4: Profesional (Depende de todo lo anterior: Entidad + Tipo + Establecimiento)
+        opciones_profesional = sorted(df_paso3['PROFESIONAL'].dropna().unique()) if 'PROFESIONAL' in df_paso3.columns else []
+        selected_profesionales = st.sidebar.multiselect("4. Profesional Médico", opciones_profesional)
 
         # Aplicamos filtro de Profesional
-        df_prof = df_centro[df_centro['PROFESIONAL'].isin(selected_profesionales)] if selected_profesionales else df_centro
+        df_paso4 = df_paso3[df_paso3['PROFESIONAL'].isin(selected_profesionales)] if selected_profesionales else df_paso3
 
-        # Filtro 6: Código de Atención CIE-10
-        opciones_atencion = sorted(df_prof['ATENCION'].dropna().unique()) if 'ATENCION' in df_prof.columns else []
-        selected_atenciones = st.sidebar.multiselect("6. Código de Atención (CIE-10)", opciones_atencion)
+        # --- FILTROS ADICIONALES DE SEGMENTACIÓN ---
+        st.sidebar.markdown("---")
+        st.sidebar.header("📌 Segmentación Opcional")
+        
+        # Cantón, Atenciones y Fechas heredan el estado de lo filtrado en la cascada
+        opciones_canton = sorted(df_paso4['CANTON'].dropna().unique()) if 'CANTON' in df_paso4.columns else []
+        selected_cantones = st.sidebar.multiselect("Cantón", opciones_canton)
+        if selected_cantones:
+            df_paso4 = df_paso4[df_paso4['CANTON'].isin(selected_cantones)]
 
-        # Filtro 7: Rango de Fechas (Mantiene el contexto de lo filtrado)
-        min_date = df_prof['FECHA_ATENCION'].min().date() if not df_prof['FECHA_ATENCION'].isnull().all() else pd.Timestamp.today().date()
-        max_date = df_prof['FECHA_ATENCION'].max().date() if not df_prof['FECHA_ATENCION'].isnull().all() else pd.Timestamp.today().date()
-        date_range = st.sidebar.date_input("7. Rango de Fechas", [min_date, max_date])
+        opciones_atencion = sorted(df_paso4['ATENCION'].dropna().unique()) if 'ATENCION' in df_paso4.columns else []
+        selected_atenciones = st.sidebar.multiselect("Código de Atención (CIE-10)", opciones_atencion)
+        if selected_atenciones:
+            df_paso4 = df_paso4[df_paso4['ATENCION'].isin(selected_atenciones)]
 
-        # --- 4. DATA FINAL FILTRADA CONSOLIDADA ---
-        df_filtered = df_prof.copy()
-        if selected_atenciones: 
-            df_filtered = df_filtered[df_filtered['ATENCION'].isin(selected_atenciones)]
+        # Rango de Fechas
+        min_date = df_paso4['FECHA_ATENCION'].min().date() if not df_paso4['FECHA_ATENCION'].isnull().all() else pd.Timestamp.today().date()
+        max_date = df_paso4['FECHA_ATENCION'].max().date() if not df_paso4['FECHA_ATENCION'].isnull().all() else pd.Timestamp.today().date()
+        date_range = st.sidebar.date_input("Rango de Fechas", [min_date, max_date])
+
+        # --- 4. CONSOLIDACIÓN FINAL DEL DATAFRAME ---
+        df_filtered = df_paso4.copy()
         if len(date_range) == 2:
             df_filtered = df_filtered[(df_filtered['FECHA_ATENCION'].dt.date >= date_range[0]) & (df_filtered['FECHA_ATENCION'].dt.date <= date_range[1])]
 
@@ -131,4 +133,4 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"🚨 Error general de procesamiento: {e}")
 else:
-    st.info("💡 Por favor, carga el archivo Excel en el panel izquierdo para activar los filtros dependientes.")
+    st.info("💡 Por favor, carga el archivo Excel para activar el flujo en cascada jerárquica.")
