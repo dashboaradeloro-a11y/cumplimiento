@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos visuales profesionales
+# Estilos visuales limpios y profesionales
 st.markdown("""
     <style>
         .main { background-color: #f8f9fa; }
@@ -37,17 +37,17 @@ if uploaded_file is not None:
         # Lectura de datos
         df = pd.read_excel(uploaded_file)
         
-        # Limpieza por si acaso queden espacios en blanco en los extremos de los encabezados
-        df.columns = df.columns.str.strip().str.upper()
+        # Limpieza estándar de encabezados por seguridad (remueve espacios invisibles)
+        df.columns = df.columns.str.strip()
         
-        # Validación y conversión de la columna obligatoria de fecha
+        # Validación y conversión de la columna oficial FECHA_ATENCION
         if 'FECHA_ATENCION' in df.columns:
             df['FECHA_ATENCION'] = pd.to_datetime(df['FECHA_ATENCION'], errors='coerce')
         else:
-            st.error("❌ No se encontró la columna requerida: 'FECHA_ATENCION'")
+            st.error("❌ No se encontró la columna requerida: 'FECHA_ATENCION' en el archivo cargado.")
             st.stop()
 
-        # 3. FILTROS EN LA BARRA LATERAL (Estructura oficial de columnas)
+        # 3. FILTROS EN LA BARRA LATERAL (Estructura de Columnas Oficial)
         st.sidebar.header("🔍 Filtros de Búsqueda")
         
         selected_centros = st.sidebar.multiselect("Centro de Salud", sorted(df['CENTRO_SALUD'].dropna().unique())) if 'CENTRO_SALUD' in df.columns else []
@@ -55,9 +55,9 @@ if uploaded_file is not None:
         selected_cantones = st.sidebar.multiselect("Cantón", sorted(df['CANTON'].dropna().unique())) if 'CANTON' in df.columns else []
         selected_entidades = st.sidebar.multiselect("Entidad (Distrito)", sorted(df['ENTIDAD'].dropna().unique())) if 'ENTIDAD' in df.columns else []
         selected_profesionales = st.sidebar.multiselect("Profesional", sorted(df['PROFESIONAL'].dropna().unique())) if 'PROFESIONAL' in df.columns else []
-        selected_atenciones = st.sidebar.multiselect("Código de Atención (CIE-10)", sorted(df['ATENCION'].dropna().unique())) if 'ATENCION' in df.columns else []
+        selected_atenciones = st.sidebar.multiselect("Atención (CIE-10)", sorted(df['ATENCION'].dropna().unique())) if 'ATENCION' in df.columns else []
         
-        # Filtro de Rango de Fechas
+        # Filtro de Rango de Fechas basado en FECHA_ATENCION
         min_date = df['FECHA_ATENCION'].min().date() if not df['FECHA_ATENCION'].isnull().all() else pd.Timestamp.today().date()
         max_date = df['FECHA_ATENCION'].max().date() if not df['FECHA_ATENCION'].isnull().all() else pd.Timestamp.today().date()
         date_range = st.sidebar.date_input("Rango de Fechas", [min_date, max_date])
@@ -73,7 +73,7 @@ if uploaded_file is not None:
         if len(date_range) == 2:
             df_filtered = df_filtered[(df_filtered['FECHA_ATENCION'].dt.date >= date_range[0]) & (df_filtered['FECHA_ATENCION'].dt.date <= date_range[1])]
 
-        # 5. TARJETAS DE INDICADORES (KPIs)
+        # 5. TARJETAS DE INDICADORES EN PANTALLA PRINCIPAL (KPIs)
         total_atenciones = len(df_filtered)
         top_diag = df_filtered['DIAGNOSTICO'].value_counts().index[0] if 'DIAGNOSTICO' in df_filtered.columns and not df_filtered['DIAGNOSTICO'].empty else "N/A"
         
@@ -83,32 +83,32 @@ if uploaded_file is not None:
         with col2:
             st.markdown(f"<div class='metric-box' style='border-left: 5px solid #27ae60;'><small style='color: #7f8c8d; font-weight: bold;'>DIAGNÓSTICO MÁS FRECUENTE</small><h4 style='margin: 0; color: #27ae60; font-size: 16px;'>{top_diag}</h4></div>", unsafe_allow_html=True)
 
-        # 6. GRÁFICOS DE BARRAS COMPARATIVOS (Requerimiento de Tipo de Atención y Cronología)
+        # 6. GRÁFICOS DE BARRAS COMPARATIVOS (Requerimiento Solicitado)
         st.subheader("📊 Análisis Comparativo Operativo")
         g1, g2 = st.columns(2)
         
         with g1:
             if 'TIPO_ATENCION' in df_filtered.columns:
-                fig_tipo = px.bar(df_filtered['TIPO_ATENCION'].value_counts().reset_index(), x='TIPO_ATENCION', y='count', title="Tipo de Atención (Intramural / Extramural)", labels={'count':'Cantidad', 'TIPO_ATENCION': 'Modalidad'}, color='TIPO_ATENCION', color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_tipo = px.bar(df_filtered['TIPO_ATENCION'].value_counts().reset_index(), x='TIPO_ATENCION', y='count', title="Distribución por Tipo de Atención (Intramural / Extramural)", labels={'count':'Cantidad', 'TIPO_ATENCION': 'Modalidad'}, color='TIPO_ATENCION', color_discrete_sequence=px.colors.qualitative.Pastel)
                 fig_tipo.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_tipo, use_container_width=True)
             else:
-                st.info("Columna 'TIPO_ATENCION' no encontrada en el archivo.")
+                st.info("Columna 'TIPO_ATENCION' no encontrada.")
 
         with g2:
             if 'CRONOLOGIA' in df_filtered.columns:
-                fig_crono = px.bar(df_filtered['CRONOLOGIA'].value_counts().reset_index(), x='CRONOLOGIA', y='count', title="Cronología de Atención (Primera / Subsecuente)", labels={'count':'Cantidad', 'CRONOLOGIA': 'Evolución'}, color='CRONOLOGIA', color_discrete_sequence=px.colors.qualitative.Safe)
+                fig_crono = px.bar(df_filtered['CRONOLOGIA'].value_counts().reset_index(), x='CRONOLOGIA', y='count', title="Distribución por Cronología (Primera / Subsecuente)", labels={'count':'Cantidad', 'CRONOLOGIA': 'Evolución'}, color='CRONOLOGIA', color_discrete_sequence=px.colors.qualitative.Safe)
                 fig_crono.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_crono, use_container_width=True)
             else:
-                st.info("Columna 'CRONOLOGIA' no encontrada en el archivo.")
+                st.info("Columna 'CRONOLOGIA' no encontrada.")
 
-        # 7. TABLA DE DATOS DETALLADOS AUDITABLE
-        st.subheader("📋 Registros Filtrados")
+        # 7. VISUALIZADOR DE REGISTROS FILTRADOS EN TABLA
+        st.subheader("📋 Registros Detallados")
         with st.expander("Expandir para auditar la tabla de datos completa"):
             st.dataframe(df_filtered, use_container_width=True)
 
     except Exception as e:
-        st.error(f"🚨 Ocurrió un error inesperado al procesar el archivo: {e}")
+        st.error(f"🚨 Error general de procesamiento: {e}")
 else:
-    st.info("💡 Esperando archivo... Por favor, carga el nuevo Excel estructurado en la barra lateral izquierda.")
+    st.info("💡 Listo para procesar. Por favor, carga el archivo Excel configurado en el panel izquierdo.")
